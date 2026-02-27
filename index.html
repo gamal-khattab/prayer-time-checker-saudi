@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>موعد الصلاة الآن؟</title>
+
+  <!-- Luxon للتعامل مع الوقت وتوقيت السعودية -->
+  <script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"></script>
+
+  <style>
+    body { font-family: system-ui, Arial; margin: 20px; }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    select, button { padding: 10px; font-size: 16px; }
+    .card { margin-top: 15px; padding: 12px; border: 1px solid #ddd; border-radius: 10px; }
+    #status { font-size: 18px; font-weight: 800; }
+    .muted { color: #666; font-size: 14px; margin-top: 6px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    td, th { border-bottom: 1px solid #eee; padding: 8px; text-align: right; }
+    th { font-weight: 700; }
+  </style>
+</head>
+
+<body>
+  <h2>هل الآن موعد صلاة؟</h2>
+
+  <div class="row">
+    <label for="city">اختر المحافظة/المدينة:</label>
+
+    <select id="city">
+      <optgroup label="منطقة الرياض">
+        <option value="Riyadh">الرياض</option>
+        <option value="Al Kharj">الخرج</option>
+        <option value="Al Majmaah">المجمعة</option>
+        <option value="Wadi Ad Dawasir">وادي الدواسر</option>
+        <option value="Shaqra">شقراء</option>
+      </optgroup>
+
+      <optgroup label="منطقة مكة المكرمة">
+        <option value="Makkah">مكة المكرمة</option>
+        <option value="Jeddah">جدة</option>
+        <option value="Taif">الطائف</option>
+        <option value="Rabigh">رابغ</option>
+        <option value="Al Lith">الليث</option>
+      </optgroup>
+
+      <optgroup label="منطقة المدينة المنورة">
+        <option value="Madinah">المدينة المنورة</option>
+        <option value="Yanbu">ينبع</option>
+        <option value="Al Ula">العلا</option>
+        <option value="Badr">بدر</option>
+        <option value="Khaybar">خيبر</option>
+      </optgroup>
+
+      <optgroup label="المنطقة الشرقية">
+        <option value="Dammam">الدمام</option>
+        <option value="Khobar">الخبر</option>
+        <option value="Dhahran">الظهران</option>
+        <option value="Jubail">الجبيل</option>
+        <option value="Al Ahsa">الأحساء</option>
+      </optgroup>
+
+      <optgroup label="عسير">
+        <option value="Abha">أبها</option>
+        <option value="Khamis Mushait">خميس مشيط</option>
+        <option value="Bisha">بيشة</option>
+        <option value="Mahayil">محايل عسير</option>
+      </optgroup>
+
+      <optgroup label="تبوك">
+        <option value="Tabuk">تبوك</option>
+        <option value="Duba">ضباء</option>
+        <option value="Umluj">أملج</option>
+      </optgroup>
+
+      <optgroup label="جازان">
+        <option value="Jazan">جازان</option>
+        <option value="Sabya">صبيا</option>
+        <option value="Abu Arish">أبو عريش</option>
+      </optgroup>
+
+      <optgroup label="نجران">
+        <option value="Najran">نجران</option>
+        <option value="Sharurah">شرورة</option>
+      </optgroup>
+
+      <optgroup label="حائل">
+        <option value="Hail">حائل</option>
+        <option value="Baqaa">بقعاء</option>
+      </optgroup>
+
+      <optgroup label="القصيم">
+        <option value="Buraydah">بريدة</option>
+        <option value="Unaizah">عنيزة</option>
+        <option value="Ar Rass">الرس</option>
+      </optgroup>
+
+      <optgroup label="الجوف">
+        <option value="Sakaka">سكاكا</option>
+        <option value="Al Qurayyat">القريات</option>
+      </optgroup>
+
+      <optgroup label="الحدود الشمالية">
+        <option value="Arar">عرعر</option>
+        <option value="Rafha">رفحاء</option>
+      </optgroup>
+
+      <optgroup label="الباحة">
+        <option value="Al Baha">الباحة</option>
+        <option value="Baljurashi">بلجرشي</option>
+      </optgroup>
+    </select>
+
+    <button id="checkBtn">تحقق الآن</button>
+  </div>
+
+  <div class="card">
+    <div id="status">اختر مدينة واضغط “تحقق الآن”.</div>
+    <div class="muted" id="meta"></div>
+
+    <table id="timesTable" style="display:none;">
+      <thead>
+        <tr>
+          <th>الصلاة</th>
+          <th>الوقت</th>
+          <th>نافذة التحقق (قبل 10 / بعد 20)</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+<script>
+const { DateTime } = luxon;
+
+// إعدادات السعودية
+const COUNTRY = "SA";
+const METHOD = 4;               // Umm Al-Qura
+const TIMEZONE = "Asia/Riyadh"; // توقيت السعودية
+
+// نافذة التحقق
+const BEFORE_MIN = 10;
+const AFTER_MIN  = 20;
+
+// الصلوات
+const PRAYERS = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"];
+
+// ========== API ==========
+async function fetchTimings(city) {
+  // ✅ نثبت تاريخ اليوم بتوقيت السعودية لضمان أحدث مواقيت اليوم
+  const today = DateTime.now().setZone(TIMEZONE).toFormat("yyyy-LL-dd");
+  const url = `https://api.aladhan.com/v1/timingsByCity/${today}?city=${encodeURIComponent(city)}&country=${COUNTRY}&method=${METHOD}`;
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("فشل طلب API");
+  const data = await res.json();
+  if (!data?.data?.timings) throw new Error("استجابة غير متوقعة من API");
+  return data;
+}
+
+// ========== Helpers ==========
+function parseHHMMtoDT(hhmm, baseDate) {
+  const clean = (hhmm || "").split(" ")[0].trim(); // "05:12 (AST)" -> "05:12"
+  const [h, m] = clean.split(":").map(Number);
+  return baseDate.set({ hour: h, minute: m, second: 0, millisecond: 0 });
+}
+
+// ✅ عرض مناسب RTL (لا ينقلب)
+function formatWindowText(startHHMM, endHHMM) {
+  return `${startHHMM} → ${endHHMM}`;
+}
+
+// تحويل DateTime إلى دقائق منذ منتصف الليل
+function toMinutes(dt) {
+  return dt.hour * 60 + dt.minute;
+}
+
+// تحويل "HH:mm" إلى دقائق منذ منتصف الليل
+function parseToMinutes(hhmm) {
+  const clean = (hhmm || "").split(" ")[0].trim();
+  const [h, m] = clean.split(":").map(Number);
+  return h * 60 + m;
+}
+
+// ========== Render Table ==========
+function renderTable(baseDate, timings) {
+  const table = document.getElementById("timesTable");
+  const tbody = table.querySelector("tbody");
+  tbody.innerHTML = "";
+
+  PRAYERS.forEach(p => {
+    const prayerDT = parseHHMMtoDT(timings[p], baseDate);
+
+    // للعرض: HH:mm فقط
+    const startDT = prayerDT.minus({ minutes: BEFORE_MIN });
+    const endDT   = prayerDT.plus({ minutes: AFTER_MIN });
+
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${p}</td>
+      <td>${prayerDT.toFormat("HH:mm")}</td>
+      <td>${formatWindowText(startDT.toFormat("HH:mm"), endDT.toFormat("HH:mm"))}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  table.style.display = "";
+}
+
+// ========== Core Check (✅ شامل أول دقيقة وآخر دقيقة) ==========
+// ⚡ الحل النهائي: مقارنة بالدقائق فقط (بدون ثواني)
+function checkNow(timings) {
+  const now = DateTime.now().setZone(TIMEZONE);
+  const nowMin = toMinutes(now); // الدقيقة الحالية فقط
+
+  for (const p of PRAYERS) {
+    const prayerMin = parseToMinutes(timings[p]);
+
+    const startMin = prayerMin - BEFORE_MIN;
+    const endMin   = prayerMin + AFTER_MIN;
+
+    // ✅ inclusive: أول دقيقة وآخر دقيقة محسوبين
+    if (nowMin >= startMin && nowMin <= endMin) {
+      return { inPrayerWindow: true, prayer: p, now, nowMin, startMin, endMin, prayerMin };
+    }
+  }
+
+  return { inPrayerWindow: false, now, nowMin };
+}
+
+// تحويل دقائق إلى "HH:mm" للعرض
+function minutesToHHMM(mins) {
+  // احتياط لو صارت سالبة أو أكبر من 24 ساعة (نادر مع نافذتك)
+  let m = mins;
+  while (m < 0) m += 1440;
+  while (m >= 1440) m -= 1440;
+
+  const hh = String(Math.floor(m / 60)).padStart(2, "0");
+  const mm = String(m % 60).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+// ========== UI Action ==========
+document.getElementById("checkBtn").addEventListener("click", async () => {
+  const status = document.getElementById("status");
+  const meta = document.getElementById("meta");
+  const city = document.getElementById("city").value;
+
+  status.textContent = "جارٍ جلب مواقيت الصلاة وحساب الوقت...";
+  meta.textContent = "";
+
+  try {
+    const apiData = await fetchTimings(city);
+    const timings = apiData.data.timings;
+
+    // تاريخ اليوم لتكوين أوقات العرض فقط
+    const baseDate = DateTime.now().setZone(TIMEZONE).startOf("day");
+
+    renderTable(baseDate, timings);
+
+    const result = checkNow(timings);
+
+    meta.textContent =
+      `المدينة: ${city} — الآن (السعودية): ${result.now.toFormat("yyyy-LL-dd HH:mm:ss")} — (مقارنة بالدقيقة: ${minutesToHHMM(result.nowMin)})`;
+
+    if (result.inPrayerWindow) {
+      const startHH = minutesToHHMM(result.startMin);
+      const endHH   = minutesToHHMM(result.endMin);
+      const prayerHH = minutesToHHMM(result.prayerMin);
+
+      status.textContent =
+        `✅ الآن موعد صلاة: ${result.prayer} (وقت الصلاة ${prayerHH}) — ${formatWindowText(startHH, endHH)} (شامل البداية والنهاية)`;
+    } else {
+      status.textContent = `❌ ليس موعد صلاة الآن`;
+    }
+
+  } catch (e) {
+    status.textContent = "حدث خطأ أثناء جلب/حساب المواقيت.";
+    meta.textContent = String(e?.message || e);
+    console.error(e);
+  }
+});
+</script>
+</body>
+</html>
